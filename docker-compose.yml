@@ -1,0 +1,62 @@
+version: '3.1'
+services:
+  db:
+    build:
+      context: ./dockers/humhub-db/
+    volumes:
+        - db-vol-1:/var/lib/mysql/
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${HUMHUB_DB_NAME}
+      # Todo
+      #MYSQL_USER: ${HUMHUB_DB_USER}
+      #MYSQL_PASSWORD: ${HUMHUB_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "--silent"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  fpm:
+    build:
+      context: ./dockers/humhub-fpm/
+    links:
+      # fpm after Web container as docker messes up the directory permissions to
+      # drwxrwxr-x 2 _apt          101 4096 Oct 19 21:49 assets
+      # and then yii is not able to start and stops working with
+      # "folder assets is not writeable for web process..."
+      - web
+    volumes:
+      - ./assets/conf/fpm/pool.d/:/etc/php/7.2/fpm/pool.d/
+      - humhub-uploads-vol-1:/var/www/uploads/:rw
+      - humhub-assets-vol-1:/var/www/assets/:rw
+      - humhub-protected-config-vol-1:/var/www/protected/config:rw
+      - humhub-protected-modules-vol-1:/var/www/protected/modules:rw
+
+  web:
+    build:
+      context: ./dockers/humhub-nginx/
+    command: /bin/sh -c "envsubst '$${HTTP_HOSTNAME} $${HTTP_PORT}' < /tmp/cfg/default.template > /etc/nginx/conf.d/default.conf &&
+      exec nginx -g 'daemon off;'"
+    environment:
+      HTTP_HOSTNAME: ${HTTP_HOSTNAME}
+      HTTP_PORT: ${HTTP_PORT}
+    ports:
+      - "80:80"
+    links:
+      - db
+    volumes:
+      - ./assets/conf/nginx/conf.d/:/tmp/cfg/:rw
+      - humhub-uploads-vol-1:/var/www/uploads/:rw
+      - humhub-assets-vol-1:/var/www/assets/:ro
+      - humhub-protected-config-vol-1:/var/www/protected/config:rw
+      - humhub-protected-modules-vol-1:/var/www/protected/modules:rw
+
+
+
+volumes:
+  db-vol-1:
+  humhub-uploads-vol-1:
+  humhub-assets-vol-1:
+  humhub-protected-config-vol-1:
+  humhub-protected-modules-vol-1:
